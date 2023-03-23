@@ -75,3 +75,4 @@ CMakeLists.txt.user*
 # My stuff
 .vscode
 *.dSym
+**/build

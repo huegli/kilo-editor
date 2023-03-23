@@ -1,9 +1,11 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.25)
+project(kilo-cppt)
 
-project(kilo-editor LANGUAGES C)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(kilo-editor kilo.c)
-set_property(TARGET kilo-editor PROPERTY C_STANDARD 99)
+include_directories(cpp-terminal)
 
-install(TARGETS kilo-editor
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+add_subdirectory(cpp-terminal)
+add_executable(${PROJECT_NAME} kilo-cppt.cpp )
+target_link_libraries(kilo PRIVATE cpp-terminal::cpp-terminal Warnings::Warnings)
