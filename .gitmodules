@@ -1,3 +1,3 @@
 [submodule "cpp-terminal/cpp-terminal"]
-	path = cpp-terminal/cpp-terminal
+	path = kilo-cppt/cpp-terminal
 	url = https://github.com/jupyter-xeus/cpp-terminal.git
