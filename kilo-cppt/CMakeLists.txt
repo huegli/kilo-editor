@@ -9,4 +9,4 @@ include_directories(cpp-terminal)
 
 add_subdirectory(cpp-terminal)
 add_executable(${PROJECT_NAME} main.cpp )
-target_link_libraries(kilo PRIVATE cpp-terminal::cpp-terminal Warnings::Warnings)
+target_link_libraries(${PROJECT_NAME} PRIVATE cpp-terminal::cpp-terminal Warnings::Warnings)
