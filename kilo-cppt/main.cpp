@@ -500,117 +500,98 @@ void editorSave() {
 
 // /*** find ***/
 
-// void editorFindCallback(char *query, int key) {
-//   static int last_match = -1;
-//   static int direction = 1;
+void editorFindCallback(char *query, int key) {
+  static int last_match = -1;
+  static int direction = 1;
 
-//   static int saved_hl_line;
-//   static char *saved_hl = NULL;
+  static int saved_hl_line;
+  static char *saved_hl = nullptr;
 
-//   if (saved_hl) {
-//     memcpy(E.row[saved_hl_line].hl, saved_hl, E.row[saved_hl_line].rsize);
-//     free(saved_hl);
-//     saved_hl = NULL;
-//   }
-//   if (key == '\r' || key == '\x1b') {
-//     last_match = -1;
-//     direction = 1;
-//     return;
-//   } else if (key == ARROW_RIGHT || key == ARROW_DOWN) {
-//     direction = 1;
-//   } else if (key == ARROW_LEFT || key == ARROW_UP) {
-//     direction = -1;
-//   } else {
-//     last_match = -1;
-//     direction = 1;
-//   }
+  if (saved_hl) {
+    memcpy(E.row[saved_hl_line].hl, saved_hl, E.row[saved_hl_line].rsize);
+    free(saved_hl);
+    saved_hl = nullptr;
+  }
+  if (key == Term::Key::ENTER || key == Term::Key::ESC) {
+    last_match = -1;
+    direction = 1;
+    return;
+  } else if (key == Term::Key::ARROW_RIGHT || key == Term::Key::ARROW_DOWN) {
+    direction = 1;
+  } else if (key == Term::Key::ARROW_LEFT || key == Term::Key::ARROW_UP) {
+    direction = -1;
+  } else {
+    last_match = -1;
+    direction = 1;
+  }
 
-//   if (last_match == -1) direction = 1;
-//   int current = last_match;
-//   int i;
-//   for (i = 0; i < E.numrows; i++) {
-//     current += direction;
-//     if (current == -1) current = E.numrows - 1;
-//     else if (current == E.numrows) current = 0;
+  if (last_match == -1)
+    direction = 1;
+  int current = last_match;
+  int i;
+  for (i = 0; i < E.numrows; i++) {
+    current += direction;
+    if (current == -1)
+      current = E.numrows - 1;
+    else if (current == E.numrows)
+      current = 0;
 
-//     erow *row = &E.row[current];
-//     char *match = strstr(row->render, query);
-//     if (match) {
-//       last_match = current;
-//       E.cy = current;
-//       E.cx = editorRowRxToCx(row, match - row->render);
-//       E.rowoff = E.numrows;
+    erow *row = &E.row[current];
+    char *match = strstr(row->render, query);
+    if (match) {
+      last_match = current;
+      E.cy = current;
+      E.cx = editorRowRxToCx(row, match - row->render);
+      E.rowoff = E.numrows;
 
-//       saved_hl_line = current;
-//       saved_hl = malloc(row->size);
-//       memcpy(saved_hl, row->hl, row->rsize);
-//       memset(&row->hl[match - row->render], HL_MATCH, strlen(query));
-//       break;
-//     }
-//   }
-// }
+      saved_hl_line = current;
+      saved_hl = (char *)malloc(row->size);
+      memcpy(saved_hl, row->hl, row->rsize);
+      memset(&row->hl[match - row->render], HL_MATCH, strlen(query));
+      break;
+    }
+  }
+}
 
-// void editorFind() {
-//   int saved_cx = E.cx;
-//   int saved_cy = E.cy;
-//   int saved_coloff = E.coloff;
-//   int saved_rowoff = E.rowoff;
+void editorFind() {
+  int saved_cx = E.cx;
+  int saved_cy = E.cy;
+  int saved_coloff = E.coloff;
+  int saved_rowoff = E.rowoff;
 
-//   char *query = editorPrompt("Search: %s (ESC/Arrows/Enter)",
-//   editorFindCallback);
+  char *query =
+      editorPrompt("Search: %s (ESC/Arrows/Enter)", editorFindCallback);
 
-//   if (query) {
-//     free(query);
-//   } else {
-//     E.cx = saved_cx;
-//     E.cy = saved_cy;
-//     E.coloff = saved_coloff;
-//     E.rowoff = saved_rowoff;
-//   }
-// }
+  if (query) {
+    free(query);
+  } else {
+    E.cx = saved_cx;
+    E.cy = saved_cy;
+    E.coloff = saved_coloff;
+    E.rowoff = saved_rowoff;
+  }
+}
 
-// /*** append buffer ***/
+/*** output ***/
 
-// struct abuf {
-//   char *b;
-//   int len;
-// };
-
-// #define ABUF_INIT                                                              \
-//   { NULL, 0 }
-
-// void abAppend(struct abuf *ab, const char *s, int len) {
-//   char *new = realloc(ab->b, ab->len + len);
-
-//   if (new == NULL)
-//     return;
-//   memcpy(&new[ab->len], s, len);
-//   ab->b = new;
-//   ab->len += len;
-// }
-
-// void abFree(struct abuf *ab) { free(ab->b); }
-
-// /*** output ***/
-
-// void editorScroll() {
-//   E.rx = 0;
-//   if (E.cy < E.numrows) {
-//     E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
-//   }
-//   if (E.cy < E.rowoff) {
-//     E.rowoff = E.cy;
-//   }
-//   if (E.cy >= E.rowoff + E.screenrows) {
-//     E.rowoff = E.cy - E.screenrows + 1;
-//   }
-//   if (E.cx < E.coloff) {
-//     E.coloff = E.rx;
-//   }
-//   if (E.rx >= E.coloff + E.screencols) {
-//     E.coloff = E.rx - E.screencols + 1;
-//   }
-// }
+void editorScroll() {
+  E.rx = 0;
+  if (E.cy < E.numrows) {
+    E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+  }
+  if (E.cy < E.rowoff) {
+    E.rowoff = E.cy;
+  }
+  if (E.cy >= E.rowoff + E.screenrows) {
+    E.rowoff = E.cy - E.screenrows + 1;
+  }
+  if (E.cx < E.coloff) {
+    E.coloff = E.rx;
+  }
+  if (E.rx >= E.coloff + E.screencols) {
+    E.coloff = E.rx - E.screencols + 1;
+  }
+}
 
 // void editorDrawRows(struct abuf *ab) {
 //   int y;
