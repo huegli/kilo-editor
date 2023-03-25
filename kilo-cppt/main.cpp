@@ -724,161 +724,166 @@ void editorSetStatusMessage(const char *fmt, ...) {
 // /*** input ***/
 
 char *editorPrompt(const char *prompt, void (*callback)(char *, int)) {
-  //   size_t bufsize = 128;
-  //   char *buf = malloc(bufsize);
+  std::size_t bufsize = 128;
+  char *buf = (char *)malloc(bufsize);
 
-  //   size_t buflen = 0;
-  //   buf[0] = '\0';
+  std::size_t buflen = 0;
+  buf[0] = '\0';
 
-  //   while (1) {
-  //     editorSetStatusMessage(prompt, buf);
-  //     editorRefreshScreen();
+  while (true) {
+    editorSetStatusMessage(prompt, buf);
+    editorRefreshScreen();
 
-  //     int c = editorReadKey();
-  //     if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
-  //       if (buflen != 0) buf[--buflen] = '\0';
-  //     } else if (c == '\x1b') {
-  //       editorSetStatusMessage("");
-  //       if (callback) callback(buf, c);
-  //       free(buf);
-  //       return NULL;
-  //     } else if (c == '\r') {
-  //       if (buflen != 0) {
-  //         editorSetStatusMessage("");
-  //         if (callback) callback(buf, c);
-  //         return buf;
-  //       }
-  //     } else if (!iscntrl(c) && c < 128) {
-  //       if (buflen == bufsize - 1) {
-  //         bufsize *= 2;
-  //         buf = realloc(buf, bufsize);
-  //       }
-  //       buf[buflen++] = c;
-  //       buf[buflen] = '\0';
-  //     }
+    int c = Term::read_key();
+    if (c == Term::Key::DEL || c == Term::Key::CTRL + 'h' ||
+        c == Term::Key::BACKSPACE) {
+      if (buflen != 0)
+        buf[--buflen] = '\0';
+    } else if (c == Term::Key::ESC) {
+      editorSetStatusMessage("");
+      if (callback)
+        callback(buf, c);
+      free(buf);
+      return nullptr;
+    } else if (c == Term::Key::ENTER) {
+      if (buflen != 0) {
+        editorSetStatusMessage("");
+        if (callback)
+          callback(buf, c);
+        return buf;
+      }
+    } else if (!iscntrl(c) && c < 128) {
+      if (buflen == bufsize - 1) {
+        bufsize *= 2;
+        buf = (char *)realloc(buf, bufsize);
+      }
+      buf[buflen++] = c;
+      buf[buflen] = '\0';
+    }
 
-  //     if (callback) callback(buf, c);
-  //   }
-  return nullptr;
+    if (callback)
+      callback(buf, c);
+  }
 }
 
-// void editorMoveCursor(int key) {
-//   erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+void editorMoveCursor(int key) {
+  erow *row = (E.cy >= E.numrows) ? nullptr : &E.row[E.cy];
 
-//   switch (key) {
-//   case ARROW_LEFT:
-//     if (E.cx != 0) {
-//       E.cx--;
-//     } else if (E.cy > 0) {
-//       E.cy--;
-//       E.cx = E.row[E.cy].size;
-//     }
-//     break;
-//   case ARROW_RIGHT:
-//     if (row && E.cx < row->size) {
-//       E.cx++;
-//     } else if (row && E.cx == row->size) {
-//       E.cy++;
-//       E.cx = 0;
-//     }
-//     break;
-//   case ARROW_UP:
-//     if (E.cy != 0) {
-//       E.cy--;
-//     }
-//     break;
-//   case ARROW_DOWN:
-//     if (E.cy < E.numrows) {
-//       E.cy++;
-//     }
-//     break;
-//   }
+  switch (key) {
+  case Term::Key::ARROW_LEFT:
+    if (E.cx != 0) {
+      E.cx--;
+    } else if (E.cy > 0) {
+      E.cy--;
+      E.cx = E.row[E.cy].size;
+    }
+    break;
+  case Term::Key::ARROW_RIGHT:
+    if (row && E.cx < row->size) {
+      E.cx++;
+    } else if (row && E.cx == row->size) {
+      E.cy++;
+      E.cx = 0;
+    }
+    break;
+  case Term::Key::ARROW_UP:
+    if (E.cy != 0) {
+      E.cy--;
+    }
+    break;
+  case Term::Key::ARROW_DOWN:
+    if (E.cy < E.numrows) {
+      E.cy++;
+    }
+    break;
+  }
 
-//   row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
-//   int rowlen = row ? row->size : 0;
-//   if (E.cx > rowlen) {
-//     E.cx = rowlen;
-//   }
-// }
+  row = (E.cy >= E.numrows) ? nullptr : &E.row[E.cy];
+  int rowlen = row ? row->size : 0;
+  if (E.cx > rowlen) {
+    E.cx = rowlen;
+  }
+}
 
-// void editorProcessKeypress() {
-//   static int quit_times = KILO_QUIT_TIMES;
+bool editorProcessKeypress() {
+  static int quit_times = KILO_QUIT_TIMES;
 
-//   int c = editorReadKey();
+  int c = Term::read_key();
 
-//   switch (c) {
-//     case '\r':
-//       editorInsertNewLine();
-//       break;
+  switch (c) {
+  case Term::Key::ENTER:
+    editorInsertNewLine();
+    break;
 
-//     case CTRL_KEY('q'):
-//       if (E.dirty && quit_times > 0) {
-//         editorSetStatusMessage("WARNING!!! File has unsaved changes. "
-//         "Press Ctrl-Q %d more times to quit.", quit_times);
-//         quit_times--;
-//         return;
-//       }
-//       write(STDOUT_FILENO, "\x1b[2J", 4);
-//       write(STDOUT_FILENO, "\x1b[H", 3);
-//       exit(0);
-//       break;
+  case Term::Key::CTRL_Q:
+    if (E.dirty && quit_times > 0) {
+      editorSetStatusMessage("WARNING!!! File has unsaved changes. "
+                             "Press Ctrl-Q %d more times to quit.",
+                             quit_times);
+      quit_times--;
+      return true;
+    }
+    return false;
+    break;
 
-//     case CTRL_KEY('s'):
-//       editorSave();
-//       break;
+  case Term::Key::CTRL_S:
+    editorSave();
+    break;
 
-//     case HOME_KEY:
-//       E.cx = 0;
-//       break;
+  case Term::Key::HOME:
+    E.cx = 0;
+    break;
 
-//     case END_KEY:
-//       if (E.cy < E.numrows)
-//         E.cx = E.row[E.cy].size;
-//       break;
+  case Term::Key::END:
+    if (E.cy < E.numrows)
+      E.cx = E.row[E.cy].size;
+    break;
 
-//     case CTRL_KEY('f'):
-//       editorFind();
-//       break;
+  case Term::Key::CTRL_F:
+    editorFind();
+    break;
 
-//     case BACKSPACE:
-//     case CTRL_KEY('h'):
-//     case DEL_KEY:
-//       if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
-//       editorDelChar();
-//       break;
+  case Term::Key::BACKSPACE:
+  case Term::Key::DEL:
+    if (c == Term::Key::DEL)
+      editorMoveCursor(Term::Key::ARROW_RIGHT);
+    editorDelChar();
+    break;
 
-//     case PAGE_UP:
-//     case PAGE_DOWN: {
-//       if (c == PAGE_UP) {
-//         E.cy = E.rowoff;
-//       } else if (c == PAGE_DOWN) {
-//         E.cy = E.rowoff + E.screenrows - 1;
-//         if (E.cy > E.numrows)
-//           E.cy = E.numrows;
-//       }
-//       int times = E.screenrows;
-//       while (times--)
-//         editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-//     } break;
+  case Term::Key::PAGE_UP:
+  case Term::Key::PAGE_DOWN: {
+    if (c == Term::Key::PAGE_UP) {
+      E.cy = E.rowoff;
+    } else if (c == Term::Key::PAGE_DOWN) {
+      E.cy = E.rowoff + E.screenrows - 1;
+      if (E.cy > E.numrows)
+        E.cy = E.numrows;
+    }
+    int times = E.screenrows;
+    while (times--)
+      editorMoveCursor(c == Term::Key::PAGE_UP ? Term::Key::ARROW_UP
+                                               : Term::Key::ARROW_DOWN);
+  } break;
 
-//     case ARROW_UP:
-//     case ARROW_DOWN:
-//     case ARROW_LEFT:
-//     case ARROW_RIGHT:
-//       editorMoveCursor(c);
-//       break;
+  case Term::Key::ARROW_UP:
+  case Term::Key::ARROW_DOWN:
+  case Term::Key::ARROW_LEFT:
+  case Term::Key::ARROW_RIGHT:
+    editorMoveCursor(c);
+    break;
 
-//     case CTRL_KEY('l'):
-//     case '\x1b':
-//       break;
+  case Term::Key::CTRL_L:
+  case Term::Key::ESC:
+    break;
 
-//     default:
-//       editorInsertChar(c);
-//       break;
-//   }
+  default:
+    editorInsertChar(c);
+    break;
+  }
 
-//   quit_times = KILO_QUIT_TIMES;
-// }
+  quit_times = KILO_QUIT_TIMES;
+  return true;
+}
 
 // /*** init ***/
 
@@ -917,6 +922,13 @@ int main(int argc, char *argv[]) {
     if (argc >= 2) {
       editorOpen(argv[1]);
     }
+    editorSetStatusMessage(
+        "HELP: Ctrl-S = save | Ctrl - Q = quit | Ctrl-F = find");
+
+    editorRefreshScreen();
+    while (editorProcessKeypress()) {
+      editorRefreshScreen();
+    }
   } catch (const Term::Exception &re) {
     std::cerr << "cpp-terminal error: " << re.what() << std::endl;
     return 2;
@@ -924,20 +936,5 @@ int main(int argc, char *argv[]) {
     std::cerr << "Unknown error." << std::endl;
     return 1;
   }
-  return 0;
-  // enableRawMode();
-  // initEditor();
-  // if (argc >= 2) {
-  //   editorOpen(argv[1]);
-  // }
-
-  // editorSetStatusMessage("HELP: Ctrl-S =  save | Ctrl-Q = quit | Ctrl-F =
-  // find");
-
-  // while (1) {
-  //   editorRefreshScreen();
-  //   editorProcessKeypress();
-  // }
-
   return 0;
 }
