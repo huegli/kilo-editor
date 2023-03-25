@@ -90,6 +90,7 @@ struct editorSyntax HLDB[] = {
 // /*** prototypes ***/
 
 char *editorPrompt(const char *prompt, void (*callback)(char *, int));
+void editorSetStatusMessage(const char *fmt, ...);
 
 // /*** syntax highlighting ***/
 
@@ -431,79 +432,71 @@ void editorDelChar() {
 
 // /*** file i/o ***/
 
-// char *editorRowsToString(int *buflen) {
-//   int totlen = 0;
-//   int j;
-//   for (j = 0; j <  E.numrows; j++)
-//     totlen += E.row[j].size + 1;
-//   *buflen = totlen;
+char *editorRowsToString(int *buflen) {
+  int totlen = 0;
+  for (int j = 0; j < E.numrows; j++)
+    totlen += E.row[j].size + 1;
+  *buflen = totlen;
 
-//   char *buf = malloc(totlen);
-//   char *p = buf;
-//   for (j = 0; j < E.numrows; j++) {
-//     memcpy(p, E.row[j].chars, E.row[j].size);
-//     p += E.row[j].size;
-//     *p = '\n';
-//     p++;
-//   }
+  char *buf = (char *)malloc(totlen);
+  char *p = buf;
+  for (int j = 0; j < E.numrows; j++) {
+    memcpy(p, E.row[j].chars, E.row[j].size);
+    p += E.row[j].size;
+    *p = '\n';
+    p++;
+  }
 
-//   return buf;
-// }
+  return buf;
+}
 
-// void editorOpen(char *filename) {
-//   free(E.filename);
-//   E.filename = strdup(filename);
+void editorOpen(char *filename) {
+  free(E.filename);
+#ifdef _WIN32
+  E.filename = _strdup(filename);
+#else
+  E.filename = strdup(filename);
+#endif
+  editorSelectSyntaxHighlight();
 
-//   editorSelectSyntaxHighlight();
+  std::ifstream f(filename);
+  if (f.fail())
+    throw std::runtime_error("File failed to open.");
+  std::string line;
+  std::getline(f, line);
+  while (f.rdstate() == std::ios_base::goodbit) {
+    int linelen = line.size();
+    while (linelen > 0 &&
+           (line[linelen - 1] == '\n' || line[linelen - 1] == '\r'))
+      linelen--;
+    editorInsertRow(E.numrows, line.c_str(), linelen);
+    std::getline(f, line);
+  }
+  E.dirty = 0;
+}
 
-//   FILE *fp = fopen(filename, "r");
-//   if (!fp)
-//     die("fopen");
+void editorSave() {
+  if (E.filename == nullptr) {
+    E.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
+    if (E.filename == nullptr) {
+      editorSetStatusMessage("Save aborted");
+      return;
+    }
+    editorSelectSyntaxHighlight();
+  }
 
-//   char *line = NULL;
-//   size_t linecap = 0;
-//   ssize_t linelen;
-//   while ((linelen = getline(&line, &linecap, fp)) != -1) {
-//     while (linelen > 0 &&
-//            (line[linelen - 1] == '\n' || line[linelen - 1] == '\r'))
-//       linelen--;
-//     editorInsertRow(E.numrows, line, linelen);
-//   }
-//   free(line);
-//   fclose(fp);
-//   E.dirty = 0;
-// }
+  int len;
+  char *buf = editorRowsToString(&len);
+  std::string s = std::string(buf, len);
+  free(buf);
 
-// void editorSave() {
-//   if (E.filename == NULL) {
-//     E.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
-//     if (E.filename == NULL) {
-//       editorSetStatusMessage("Save aborted");
-//       return;
-//     }
-//     editorSelectSyntaxHighlight();
-//   }
-
-//   int len;
-//   char *buf = editorRowsToString(&len);
-
-//   int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
-//   if (fd != -1) {
-//     if (ftruncate(fd, len) != -1) {
-//       if (write(fd, buf, len) == len) {
-//         close(fd);
-//         free(buf);
-//         E.dirty = 0;
-//         editorSetStatusMessage("%d bytes written to disk", len);
-//         return;
-//       }
-//     }
-//     close(fd);
-//   }
-
-//   free(buf);
-//   editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
-// }
+  std::ofstream out;
+  out.open(E.filename);
+  out << s;
+  out.close();
+  E.dirty = 0;
+  editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+}
 
 // /*** find ***/
 
@@ -627,7 +620,8 @@ void editorDelChar() {
 //       if (E.numrows == 0 && y == E.screenrows / 3) {
 //         char welcome[80];
 //         int welcomelen = snprintf(welcome, sizeof(welcome),
-//                                   "Kilo editor -- version %s", KILO_VERSION);
+//                                   "Kilo editor -- version %s",
+//                                   KILO_VERSION);
 //         if (welcomelen > E.screencols)
 //           welcomelen = E.screencols;
 //         int padding = (E.screencols - welcomelen) / 2;
@@ -659,8 +653,8 @@ void editorDelChar() {
 //           abAppend(ab, "\x1b[m", 3);
 //           if (current_color != -1) {
 //             char buf[16];
-//             int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", current_color);
-//             abAppend(ab, buf, clen);
+//             int clen = snprintf(buf, sizeof(buf), "\x1b[%dm",
+//             current_color); abAppend(ab, buf, clen);
 //           }
 //         } else if (hl[j] == HL_NORMAL) {
 //           if (current_color != -1) {
@@ -743,53 +737,54 @@ void editorDelChar() {
 //   abFree(&ab);
 // }
 
-// void editorSetStatusMessage(const char *fmt, ...) {
-//   va_list ap;
-//   va_start(ap, fmt);
-//   vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
-//   va_end(ap);
-//   E.statusmsg_time = time(NULL);
-// }
+void editorSetStatusMessage(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+  va_end(ap);
+  E.statusmsg_time = time(NULL);
+}
 
 // /*** input ***/
 
-// char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
-//   size_t bufsize = 128;
-//   char *buf = malloc(bufsize);
+char *editorPrompt(const char *prompt, void (*callback)(char *, int)) {
+  //   size_t bufsize = 128;
+  //   char *buf = malloc(bufsize);
 
-//   size_t buflen = 0;
-//   buf[0] = '\0';
+  //   size_t buflen = 0;
+  //   buf[0] = '\0';
 
-//   while (1) {
-//     editorSetStatusMessage(prompt, buf);
-//     editorRefreshScreen();
+  //   while (1) {
+  //     editorSetStatusMessage(prompt, buf);
+  //     editorRefreshScreen();
 
-//     int c = editorReadKey();
-//     if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
-//       if (buflen != 0) buf[--buflen] = '\0';
-//     } else if (c == '\x1b') {
-//       editorSetStatusMessage("");
-//       if (callback) callback(buf, c);
-//       free(buf);
-//       return NULL;
-//     } else if (c == '\r') {
-//       if (buflen != 0) {
-//         editorSetStatusMessage("");
-//         if (callback) callback(buf, c);
-//         return buf;
-//       }
-//     } else if (!iscntrl(c) && c < 128) {
-//       if (buflen == bufsize - 1) {
-//         bufsize *= 2;
-//         buf = realloc(buf, bufsize);
-//       }
-//       buf[buflen++] = c;
-//       buf[buflen] = '\0';
-//     }
+  //     int c = editorReadKey();
+  //     if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
+  //       if (buflen != 0) buf[--buflen] = '\0';
+  //     } else if (c == '\x1b') {
+  //       editorSetStatusMessage("");
+  //       if (callback) callback(buf, c);
+  //       free(buf);
+  //       return NULL;
+  //     } else if (c == '\r') {
+  //       if (buflen != 0) {
+  //         editorSetStatusMessage("");
+  //         if (callback) callback(buf, c);
+  //         return buf;
+  //       }
+  //     } else if (!iscntrl(c) && c < 128) {
+  //       if (buflen == bufsize - 1) {
+  //         bufsize *= 2;
+  //         buf = realloc(buf, bufsize);
+  //       }
+  //       buf[buflen++] = c;
+  //       buf[buflen] = '\0';
+  //     }
 
-//     if (callback) callback(buf, c);
-//   }
-// }
+  //     if (callback) callback(buf, c);
+  //   }
+  return nullptr;
+}
 
 // void editorMoveCursor(int key) {
 //   erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
@@ -944,6 +939,7 @@ int main(int argc, char *argv[]) {
     Term::Terminal term(true, true, false);
     initEditor();
     if (argc >= 2) {
+      editorOpen(argv[1]);
     }
   } catch (const Term::Exception &re) {
     std::cerr << "cpp-terminal error: " << re.what() << std::endl;
