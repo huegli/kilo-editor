@@ -1,21 +1,25 @@
-// /*** includes ***/
-#include "cpp-terminal/base.hpp"
-#include "cpp-terminal/color.hpp"
-#include "cpp-terminal/exception.hpp"
-#include "cpp-terminal/input.hpp"
-#include "cpp-terminal/terminal.hpp"
-#include "cpp-terminal/tty.hpp"
+/*** includes ***/
+#include <cpp-terminal/terminal.h>
 
 #include <cstdarg>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 
-// /*** defines ***/
+/*** defines ***/
 
 const std::string KILO_VERSION{"0.0.1"};
 const int KILO_TAB_STOP{8};
 const int KILO_QUIT_TIMES{3};
+
+using Term::Terminal;
+using Term::cursor_on;
+using Term::cursor_off;
+using Term::move_cursor;
+using Term::erase_to_eol;
+using Term::fg;
+using Term::style;
+using Term::Key;
 
 enum editorHighlight {
   HL_NORMAL = 0,
@@ -89,7 +93,7 @@ struct editorSyntax HLDB[] = {
 
 // /*** prototypes ***/
 
-char *editorPrompt(const char *prompt, void (*callback)(char *, int));
+char *editorPrompt(const Terminal &term, const char *prompt, void (*callback)(char *, int));
 void editorSetStatusMessage(const char *fmt, ...);
 
 // /*** syntax highlighting ***/
@@ -102,7 +106,7 @@ void editorUpdateSyntax(erow *row) {
   row->hl = (unsigned char *)realloc(row->hl, row->rsize);
   memset(row->hl, HL_NORMAL, row->rsize);
 
-  if (E.syntax == NULL)
+  if (E.syntax == nullptr)
     return;
 
   const char **keywords = E.syntax->keywords;
@@ -216,23 +220,23 @@ void editorUpdateSyntax(erow *row) {
     editorUpdateSyntax(&E.row[row->idx + 1]);
 }
 
-Term::Color editorSyntaxToColor(int hl) {
+fg editorSyntaxToColor(int hl) {
   switch (hl) {
   case HL_COMMENT:
   case HL_MLCOMMENT:
-    return Term::Color::Name::Cyan;
+    return fg::cyan;
   case HL_KEYWORD1:
-    return Term::Color::Name::Yellow;
+    return fg::yellow;
   case HL_KEYWORD2:
-    return Term::Color::Name::Green;
+    return fg::green;
   case HL_STRING:
-    return Term::Color::Name::Magenta;
+    return fg::magenta;
   case HL_NUMBER:
-    return Term::Color::Name::Red;
+    return fg::red;
   case HL_MATCH:
-    return Term::Color::Name::Blue;
+    return fg::blue;
   default:
-    return Term::Color::Name::Gray;
+    return fg::gray;
   }
 }
 
@@ -475,9 +479,9 @@ void editorOpen(char *filename) {
   E.dirty = 0;
 }
 
-void editorSave() {
+void editorSave(const Terminal &term) {
   if (E.filename == nullptr) {
-    E.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
+    E.filename = editorPrompt(term, "Save as: %s (ESC to cancel)", nullptr);
     if (E.filename == nullptr) {
       editorSetStatusMessage("Save aborted");
       return;
@@ -553,14 +557,14 @@ void editorFindCallback(char *query, int key) {
   }
 }
 
-void editorFind() {
+void editorFind(const Terminal &term) {
   int saved_cx = E.cx;
   int saved_cy = E.cy;
   int saved_coloff = E.coloff;
   int saved_rowoff = E.rowoff;
 
   char *query =
-      editorPrompt("Search: %s (ESC/Arrows/Enter)", editorFindCallback);
+      editorPrompt(term, "Search: %s (ESC/Arrows/Enter)", editorFindCallback);
 
   if (query) {
     free(query);
@@ -624,43 +628,42 @@ void editorDrawRows(std::string &ab) {
         len = E.screencols;
       char *c = &E.row[filerow].render[E.coloff];
       unsigned char *hl = &E.row[filerow].hl[E.coloff];
-      Term::Color current_color =
-          Term::Color::Name::Black; // black is not used in editorSyntaxToColor
+      fg current_color = fg::black; // black is not used in editorSyntaxToColor
       int j;
       for (j = 0; j < len; j++) {
         if (iscntrl(c[j])) {
           char sym = (c[j] <= 26) ? '@' + c[j] : '?';
-          ab.append(style(Term::Style::REVERSED));
+          ab.append(color(style::reversed));
           ab.append(std::string(&sym, 1));
-          ab.append(style(Term::Style::RESET));
-          if (current_color != Term::Color::Name::Default) {
-            ab.append(color_fg(current_color));
+          ab.append(color(style::reset));
+          if (current_color != fg::black) {
+            ab.append(color(current_color));
           }
         } else if (hl[j] == HL_NORMAL) {
-          if (current_color != Term::Color::Name::Black) {
-            ab.append(color_fg(Term::Color::Name::Default));
-            current_color = Term::Color::Name::Black;
+          if (current_color != fg::black) {
+            ab.append(color(fg::reset));
+            current_color = fg::black;
           }
           ab.append(std::string(&c[j], 1));
         } else {
-          Term::Color color = editorSyntaxToColor(hl[j]);
+          fg color = editorSyntaxToColor(hl[j]);
           if (color != current_color) {
             current_color = color;
-            ab.append(Term::color_fg(color));
+            ab.append(Term::color(color));
           }
           ab.append(std::string(&c[j], 1));
         }
       }
-      ab.append(color_fg(Term::Color::Name::Default));
+      ab.append(color(fg::reset));
     }
 
-    ab.append(Term::clear_eol());
+    ab.append(erase_to_eol());
     ab.append("\r\n");
   }
 }
 
 void editorDrawStatusBar(std::string &ab) {
-  ab.append(style(Term::Style::REVERSED));
+  ab.append(color(style::reversed));
   char status[80], rstatus[80];
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
                      E.filename ? E.filename : "[No Name]", E.numrows,
@@ -680,12 +683,12 @@ void editorDrawStatusBar(std::string &ab) {
       len++;
     }
   }
-  ab.append(style(Term::Style::RESET));
+  ab.append(color(style::reset));
   ab.append("\r\n");
 }
 
 void editorDrawMessageBar(std::string &ab) {
-  ab.append(Term::clear_eol());
+  ab.append(erase_to_eol());
   int msglen = strlen(E.statusmsg);
   if (msglen > E.screencols)
     msglen = E.screencols;
@@ -693,24 +696,22 @@ void editorDrawMessageBar(std::string &ab) {
     ab.append(std::string(E.statusmsg, msglen));
 }
 
-void editorRefreshScreen() {
+void editorRefreshScreen(const Terminal &term) {
   editorScroll();
 
   std::string ab;
   ab.reserve(16 * 1024);
 
-  ab.append(Term::cursor_off());
-  ab.append(Term::cursor_move(1, 1));
+  ab.append(cursor_off());
+  ab.append(move_cursor(1, 1));
 
   editorDrawRows(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
-  ab.append(Term::cursor_move((E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1));
+  ab.append(move_cursor((E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1));
 
-  ab.append(Term::cursor_on());
-
-  std::cout << ab << std::flush;
+  term.write(ab);
 }
 
 void editorSetStatusMessage(const char *fmt, ...) {
@@ -723,7 +724,7 @@ void editorSetStatusMessage(const char *fmt, ...) {
 
 // /*** input ***/
 
-char *editorPrompt(const char *prompt, void (*callback)(char *, int)) {
+char *editorPrompt(const Terminal &term, const char *prompt, void (*callback)(char *, int)) {
   std::size_t bufsize = 128;
   char *buf = (char *)malloc(bufsize);
 
@@ -732,20 +733,20 @@ char *editorPrompt(const char *prompt, void (*callback)(char *, int)) {
 
   while (true) {
     editorSetStatusMessage(prompt, buf);
-    editorRefreshScreen();
+    editorRefreshScreen(term);
 
-    int c = Term::read_key();
-    if (c == Term::Key::DEL || c == Term::Key::CTRL + 'h' ||
-        c == Term::Key::BACKSPACE) {
+    int c = term.read_key();
+    if (c == Key::DEL || c == CTRL('h') ||
+        c == Key::BACKSPACE) {
       if (buflen != 0)
         buf[--buflen] = '\0';
-    } else if (c == Term::Key::ESC) {
+    } else if (c == Key::ESC) {
       editorSetStatusMessage("");
       if (callback)
         callback(buf, c);
       free(buf);
       return nullptr;
-    } else if (c == Term::Key::ENTER) {
+    } else if (c == Key::ENTER) {
       if (buflen != 0) {
         editorSetStatusMessage("");
         if (callback)
@@ -770,7 +771,7 @@ void editorMoveCursor(int key) {
   erow *row = (E.cy >= E.numrows) ? nullptr : &E.row[E.cy];
 
   switch (key) {
-  case Term::Key::ARROW_LEFT:
+  case Key::ARROW_LEFT:
     if (E.cx != 0) {
       E.cx--;
     } else if (E.cy > 0) {
@@ -778,7 +779,7 @@ void editorMoveCursor(int key) {
       E.cx = E.row[E.cy].size;
     }
     break;
-  case Term::Key::ARROW_RIGHT:
+  case Key::ARROW_RIGHT:
     if (row && E.cx < row->size) {
       E.cx++;
     } else if (row && E.cx == row->size) {
@@ -786,12 +787,12 @@ void editorMoveCursor(int key) {
       E.cx = 0;
     }
     break;
-  case Term::Key::ARROW_UP:
+  case Key::ARROW_UP:
     if (E.cy != 0) {
       E.cy--;
     }
     break;
-  case Term::Key::ARROW_DOWN:
+  case Key::ARROW_DOWN:
     if (E.cy < E.numrows) {
       E.cy++;
     }
@@ -805,17 +806,17 @@ void editorMoveCursor(int key) {
   }
 }
 
-bool editorProcessKeypress() {
+bool editorProcessKeypress(const Terminal &term) {
   static int quit_times = KILO_QUIT_TIMES;
 
-  int c = Term::read_key();
+  int c = term.read_key();
 
   switch (c) {
-  case Term::Key::ENTER:
+  case Key::ENTER:
     editorInsertNewLine();
     break;
 
-  case Term::Key::CTRL_Q:
+  case CTRL_KEY('q'):
     if (E.dirty && quit_times > 0) {
       editorSetStatusMessage("WARNING!!! File has unsaved changes. "
                              "Press Ctrl-Q %d more times to quit.",
@@ -826,55 +827,60 @@ bool editorProcessKeypress() {
     return false;
     break;
 
-  case Term::Key::CTRL_S:
-    editorSave();
+  case CTRL_KEY('s'):
+    editorSave(term);
     break;
 
-  case Term::Key::HOME:
+  case Key::HOME:
     E.cx = 0;
     break;
 
-  case Term::Key::END:
+  case Key::END:
     if (E.cy < E.numrows)
       E.cx = E.row[E.cy].size;
     break;
 
-  case Term::Key::CTRL_F:
-    editorFind();
+  case CTRL_KEY('f'):
+    editorFind(term);
     break;
 
-  case Term::Key::BACKSPACE:
-  case Term::Key::DEL:
-    if (c == Term::Key::DEL)
-      editorMoveCursor(Term::Key::ARROW_RIGHT);
+  case Key::BACKSPACE:
+  case CTRL_KEY('h'):
+  case Key::DEL:
+    if (c == Key::DEL)
+      editorMoveCursor(Key::ARROW_RIGHT);
     editorDelChar();
     break;
 
-  case Term::Key::PAGE_UP:
-  case Term::Key::PAGE_DOWN: {
-    if (c == Term::Key::PAGE_UP) {
+  case Key::PAGE_UP:
+  case Key::PAGE_DOWN: {
+    if (c == Key::PAGE_UP) {
       E.cy = E.rowoff;
-    } else if (c == Term::Key::PAGE_DOWN) {
+    } else if (c == Key::PAGE_DOWN) {
       E.cy = E.rowoff + E.screenrows - 1;
       if (E.cy > E.numrows)
         E.cy = E.numrows;
     }
     int times = E.screenrows;
     while (times--)
-      editorMoveCursor(c == Term::Key::PAGE_UP ? Term::Key::ARROW_UP
-                                               : Term::Key::ARROW_DOWN);
+      editorMoveCursor(c == Key::PAGE_UP ? Key::ARROW_UP
+                                         : Key::ARROW_DOWN);
   } break;
 
-  case Term::Key::ARROW_UP:
-  case Term::Key::ARROW_DOWN:
-  case Term::Key::ARROW_LEFT:
-  case Term::Key::ARROW_RIGHT:
+  case Key::ARROW_UP:
+  case Key::ARROW_DOWN:
+  case Key::ARROW_LEFT:
+  case Key::ARROW_RIGHT:
     editorMoveCursor(c);
     break;
 
-  case Term::Key::CTRL_L:
-  case Term::Key::ESC:
+  case CTRL_KEY('l'):
+  case Key::ESC:
     break;
+
+  case Key::TAB:
+      editorInsertChar('\t');
+      break;
 
   default:
     editorInsertChar(c);
@@ -887,7 +893,7 @@ bool editorProcessKeypress() {
 
 // /*** init ***/
 
-void initEditor() {
+void initEditor(const Terminal &term) {
   E.cx = 0;
   E.cy = 0;
   E.rx = 0;
@@ -900,9 +906,7 @@ void initEditor() {
   E.statusmsg[0] = '\0';
   E.statusmsg_time = 0;
   E.syntax = nullptr;
-  std::pair<std::size_t, std::size_t> size = Term::get_size();
-  E.screenrows = size.first;
-  E.screencols = size.second;
+  term.get_term_size(E.screenrows, E.screencols);
   E.screenrows -= 2;
 }
 
@@ -911,26 +915,21 @@ int main(int argc, char *argv[]) {
   // being called when exception happens and the terminal is not put into
   // correct state.
   try {
-    // check if the terminal is capable of handling input
-    if (!Term::is_stdin_a_tty()) {
-      std::cout << "The terminal is not attached to a TTY and therefore can't "
-                   "catch user input. Existing...\n";
-      return 1;
-    }
-    Term::Terminal term(true, true, false);
-    initEditor();
+    Terminal term(true, false);
+    term.save_screen();
+    initEditor(term);
     if (argc >= 2) {
       editorOpen(argv[1]);
     }
     editorSetStatusMessage(
         "HELP: Ctrl-S = save | Ctrl - Q = quit | Ctrl-F = find");
 
-    editorRefreshScreen();
-    while (editorProcessKeypress()) {
-      editorRefreshScreen();
+    editorRefreshScreen(term);
+    while (editorProcessKeypress(term)) {
+      editorRefreshScreen(term);
     }
-  } catch (const Term::Exception &re) {
-    std::cerr << "cpp-terminal error: " << re.what() << std::endl;
+  } catch (const std::runtime_error& re) {
+    std::cerr << "Runtime error: " << re.what() << std::endl;
     return 2;
   } catch (...) {
     std::cerr << "Unknown error." << std::endl;
