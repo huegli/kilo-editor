@@ -711,6 +711,8 @@ void editorRefreshScreen(const Terminal &term) {
 
   ab.append(move_cursor((E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1));
 
+  ab.append(cursor_on());
+  
   term.write(ab);
 }
 
